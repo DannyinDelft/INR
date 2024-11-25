@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Script with controlled dimensions, normalization, and fixed 30x30 resolution.
+
 """
 !pip install rasterio
 !pip install plyfile
