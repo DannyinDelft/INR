@@ -98,9 +98,9 @@ def train(args, model, opt, scheduler):
     total_loss = 0
 
     #for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000)):
-    for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy', target_size=(1000, 1000)):
+    for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy/120m', target_size=(1000, 1000)):
         #train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Landsat/1000mpatches/Den_Bosch', target_size=(1000, 1000)))
-        train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000)))
+        train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy/70m', target_size=(1000, 1000)))
         # Set both input and target to the required 1000x1000 size for training
         opt.zero_grad()
         outputs = model(train_in)
