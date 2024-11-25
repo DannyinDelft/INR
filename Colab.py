@@ -1,12 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov  4 13:04:57 2024
-
-@author: Gebruiker
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Script with controlled dimensions, normalization, and fixed 30x30 resolution.
 """
 !pip install rasterio
@@ -29,13 +22,13 @@ drive.mount('/content/drive')
 device = torch.device('cpu')
 print(f"Running on device: {device}")
 
-# Define a memory-efficient SIREN-based model using convolutions with controlled output
+# Define a memory-efficient SIREN-based model with higher frequency for sharper images
 class CustomSirenModel(nn.Module):
     def __init__(self, in_channels=1, interm_channels=32, out_channels=1):
         super(CustomSirenModel, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, interm_channels, kernel_size=3, stride=1, padding=1)
-        self.siren1 = SirenLayer(interm_channels, interm_channels, is_first=True)
-        self.siren2 = SirenLayer(interm_channels, interm_channels)
+        self.conv1 = nn.Conv2d(in_channels, interm_channels, kernel_size=1, stride=1)
+        self.siren1 = SirenLayer(interm_channels, interm_channels, omega=50.0, is_first=True)
+        self.siren2 = SirenLayer(interm_channels, interm_channels, omega=50.0)
         self.final_conv = nn.Conv2d(interm_channels, out_channels, kernel_size=1)
 
     def forward(self, x):
@@ -46,14 +39,14 @@ class CustomSirenModel(nn.Module):
         x = self.final_conv(x)
         return x
 
-# Define a memory-efficient SIREN Layer
+# Define a SIREN Layer with adjustable omega for sharper outputs
 class SirenLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, omega=30.0, is_first=False):
+    def __init__(self, in_channels, out_channels, omega=50.0, is_first=False):
         super(SirenLayer, self).__init__()
         self.in_channels = in_channels
         self.is_first = is_first
         self.omega = omega
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
         self.init_weights()
 
     def init_weights(self):
@@ -66,10 +59,10 @@ class SirenLayer(nn.Module):
     def forward(self, x):
         return torch.sin(self.omega * self.conv(x))
 
-# Define an optimized image loader to reduce memory usage
+# Define an optimized image loader with date extraction from Ecostress filenames
 def image_loader(folder_path, target_size=(1000, 1000), normalize=True):
     """Load images one at a time with Rasterio, resizing to 1000x1000."""
-    for file in os.listdir(folder_path):
+    for file in sorted(os.listdir(folder_path)):
         if file.endswith('.tif') or file.endswith('.TIF'):
             filepath = os.path.join(folder_path, file)
             print(f"Loading file: {filepath}")
@@ -90,20 +83,24 @@ def image_loader(folder_path, target_size=(1000, 1000), normalize=True):
                     if normalize:
                         img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
 
-                    yield img_tensor.to(device), profile
+                    # Extract date from the filename, assuming format like "4_17_2020_E_1000.tif"
+                    parts = file.split('_')
+                    date_str = f"{parts[0]}_{parts[1]}_{parts[2]}"  # Produces "MM_DD_YYYY" format
+                    yield img_tensor.to(device), profile, date_str
                     print(f"Loaded image shape: {img_tensor.shape}")
 
             except Exception as e:
                 print(f"Error loading {filepath}: {e}")
 
-# Training function with controlled output dimensions
+# Training function
 def train(args, model, opt, scheduler):
     model.train()
     total_loss = 0
 
-    for train_in, profile in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000)):
-        train_tgt, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Landsat/1000mpatches/Den_Bosch', target_size=(1000, 1000)))
-
+    #for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000)):
+    for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy', target_size=(1000, 1000)):
+        #train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Landsat/1000mpatches/Den_Bosch', target_size=(1000, 1000)))
+        train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000)))
         # Set both input and target to the required 1000x1000 size for training
         opt.zero_grad()
         outputs = model(train_in)
@@ -121,7 +118,7 @@ def train(args, model, opt, scheduler):
     print(f"Average Loss: {total_loss:.4f}")
     return total_loss
 
-# Define main function for data loading, training, and testing
+# Main function for data loading, training, and testing
 def main(args):
     model = CustomSirenModel(in_channels=1, interm_channels=32, out_channels=1).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -130,12 +127,12 @@ def main(args):
     # Training phase
     train_stats = train(args, model, opt, scheduler)
 
-    # Testing phase - Save outputs
+    # Testing phase - Save outputs with Ecostress dates in filenames
     output_dir = '/content/drive/My Drive/Thesis_imagery/Rendered_images'
     os.makedirs(output_dir, exist_ok=True)
 
     with torch.no_grad():
-        for img_index, (img_batch, profile) in enumerate(image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000))):
+        for img_index, (img_batch, profile, date_str) in enumerate(image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000))):
             # Generate output from model
             outputs = model(img_batch)
 
@@ -143,8 +140,8 @@ def main(args):
             outputs = (outputs - outputs.min()) / (outputs.max() - outputs.min()) * 255
             outputs = outputs.byte()
 
-            # Save each image with a unique filename
-            image_filename = f'{output_dir}/processed_image_{img_index}.tif'
+            # Save each image with the Ecostress date in the filename
+            image_filename = f'{output_dir}/processed_image_{date_str}.tif'
             profile.update({
                 'dtype': 'uint8',
                 'count': 1,
