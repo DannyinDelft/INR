@@ -97,22 +97,31 @@ def train(args, model, opt, scheduler):
     model.train()
     total_loss = 0
 
-    #for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Den_Haag', target_size=(1000, 1000)):
-    for train_in, profile, _ in image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy/120m', target_size=(1000, 1000)):
-        #train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Landsat/1000mpatches/Den_Bosch', target_size=(1000, 1000)))
-        train_tgt, _, _ = next(image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy/70m', target_size=(1000, 1000)))
-        # Set both input and target to the required 1000x1000 size for training
-        opt.zero_grad()
-        outputs = model(train_in)
-        loss = nn.MSELoss()(outputs, train_tgt)
+    # Use iterators for the two datasets
+    loader_70m = image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy/70m', target_size=(1000, 1000))
+    loader_120m = image_loader('/content/drive/My Drive/Thesis_imagery/Ecostress/1000mpatches/Italy/120m', target_size=(1000, 1000))
 
-        loss.backward()
-        opt.step()
-        total_loss += loss.item()
+    while True:
+        try:
+            # Get the next images from both loaders
+            train_in, _, _ = next(loader_70m)
+            train_tgt, _, _ = next(loader_120m)
 
-        # Clear cache and delete tensors to release memory after each iteration
-        del train_in, train_tgt, outputs
-        torch.cuda.empty_cache()
+            # Perform training step
+            opt.zero_grad()
+            outputs = model(train_in)
+            loss = nn.MSELoss()(outputs, train_tgt)
+
+            loss.backward()
+            opt.step()
+            total_loss += loss.item()
+
+            # Clear cache and delete tensors to release memory after each iteration
+            del train_in, train_tgt, outputs
+            torch.cuda.empty_cache()
+        except StopIteration:
+            # Break the loop if any loader is exhausted
+            break
 
     scheduler.step()
     print(f"Average Loss: {total_loss:.4f}")
